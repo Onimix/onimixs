@@ -101,6 +101,15 @@ Vercel should auto-detect Next.js. Verify:
 - **Output Directory**: `.next` (or leave default)
 - **Install Command**: `npm install` (or leave default)
 
+**⚠️ IMPORTANT: DO NOT run `prisma db push` in the build command!**
+
+The build script should ONLY be:
+```bash
+prisma generate && next build
+```
+
+Database schema initialization must be done separately (see Step 4).
+
 ### 3.3 Add Environment Variables
 
 **CRITICAL STEP:**
@@ -124,7 +133,27 @@ Vercel should auto-detect Next.js. Verify:
 
 ## 🔍 Step 4: Initialize Database Schema
 
-### Option A: Using Vercel CLI (Recommended)
+**⚠️ CRITICAL: This step must be completed BEFORE or AFTER deployment, NOT during the Vercel build!**
+
+The Vercel build process should NOT connect to the database. Database schema initialization is a separate operation.
+
+### Option A: Before First Deployment (Recommended)
+
+```bash
+# 1. Create a local .env file with your Supabase DATABASE_URL
+echo 'DATABASE_URL="postgresql://postgres:YOUR_PASSWORD@db.xxxxx.supabase.co:5432/postgres"' > .env
+
+# 2. Push schema to Supabase
+npx prisma db push
+
+# 3. Verify tables were created
+npx prisma studio
+
+# 4. Delete local .env file (it's gitignored)
+rm .env
+```
+
+### Option B: After Deployment Using Vercel CLI
 
 ```bash
 # Install Vercel CLI
@@ -136,24 +165,72 @@ vercel login
 # Link to your project
 vercel link
 
-# Pull environment variables
+# Pull environment variables from Vercel
 vercel env pull .env.local
 
 # Push database schema
 npx prisma db push
+
+# Clean up
+rm .env.local
 ```
 
-### Option B: Manual Setup
+### Option C: Using Supabase SQL Editor
 
-```bash
-# Set production DATABASE_URL locally
-export DATABASE_URL="your-production-database-url"
+If you prefer not to use the CLI:
 
-# Push schema to production database
-npx prisma db push
+1. Go to Supabase Dashboard → SQL Editor
+2. Run the following SQL to create tables manually:
 
-# Verify
-npx prisma studio
+```sql
+-- Create Results table
+CREATE TABLE "Result" (
+    "id" TEXT PRIMARY KEY,
+    "time" TEXT NOT NULL,
+    "homeTeam" TEXT NOT NULL,
+    "awayTeam" TEXT NOT NULL,
+    "homeGoals" INTEGER NOT NULL,
+    "awayGoals" INTEGER NOT NULL,
+    "totalGoals" INTEGER NOT NULL,
+    "over15" BOOLEAN NOT NULL,
+    "over25" BOOLEAN NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX "Result_homeTeam_idx" ON "Result"("homeTeam");
+CREATE INDEX "Result_awayTeam_idx" ON "Result"("awayTeam");
+
+-- Create Odds table
+CREATE TABLE "Odd" (
+    "id" TEXT PRIMARY KEY,
+    "time" TEXT NOT NULL,
+    "homeTeam" TEXT NOT NULL,
+    "awayTeam" TEXT NOT NULL,
+    "odd1" DOUBLE PRECISION NOT NULL,
+    "oddX" DOUBLE PRECISION NOT NULL,
+    "odd2" DOUBLE PRECISION NOT NULL,
+    "goalLine" DOUBLE PRECISION NOT NULL,
+    "overOdd" DOUBLE PRECISION NOT NULL,
+    "underOdd" DOUBLE PRECISION NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX "Odd_homeTeam_idx" ON "Odd"("homeTeam");
+CREATE INDEX "Odd_awayTeam_idx" ON "Odd"("awayTeam");
+
+-- Create Predictions table
+CREATE TABLE "Prediction" (
+    "id" TEXT PRIMARY KEY,
+    "oddId" TEXT NOT NULL,
+    "combinedExpectedGoals" DOUBLE PRECISION NOT NULL,
+    "over15Probability" DOUBLE PRECISION NOT NULL,
+    "over25Probability" DOUBLE PRECISION NOT NULL,
+    "decision" TEXT NOT NULL,
+    "confidenceScore" DOUBLE PRECISION NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX "Prediction_oddId_idx" ON "Prediction"("oddId");
 ```
 
 ---
@@ -237,6 +314,21 @@ Solution:
 
 ### Database Connection Issues
 
+**Error: P1001: Can't reach database server at `postgres:5432`**
+
+This error means Prisma is trying to connect during the Vercel build, which is incorrect.
+
+**Root Cause:**
+- You're running `prisma db push` in the build command
+- The `DATABASE_URL` environment variable is not available during build
+- Prisma falls back to a default local database host
+
+**Solution:**
+1. Remove `prisma db push` from your Vercel build command
+2. The build command should ONLY be: `prisma generate && next build`
+3. Initialize the database schema separately using one of the methods in Step 4
+4. Redeploy to Vercel
+
 **Error: Can't reach database server**
 
 Solutions:
@@ -244,6 +336,7 @@ Solutions:
 2. Check Supabase project is active
 3. Try using "Connection Pooling" URL from Supabase
 4. Ensure no extra spaces in environment variable
+5. Make sure you're not running `prisma db push` during Vercel build
 
 **Error: SSL connection required**
 
