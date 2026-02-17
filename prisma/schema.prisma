@@ -1,0 +1,57 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Result {
+  id         String   @id @default(uuid())
+  time       String
+  homeTeam   String
+  awayTeam   String
+  homeGoals  Int
+  awayGoals  Int
+  totalGoals Int
+  over15     Boolean
+  over25     Boolean
+  createdAt  DateTime @default(now())
+
+  @@index([homeTeam])
+  @@index([awayTeam])
+}
+
+model Odd {
+  id        String   @id @default(uuid())
+  time      String
+  homeTeam  String
+  awayTeam  String
+  odd1      Float
+  oddX      Float
+  odd2      Float
+  goalLine  Float
+  overOdd   Float
+  underOdd  Float
+  createdAt DateTime @default(now())
+
+  @@index([homeTeam])
+  @@index([awayTeam])
+}
+
+model Prediction {
+  id                     String   @id @default(uuid())
+  oddId                  String
+  combinedExpectedGoals  Float
+  over15Probability      Float
+  over25Probability      Float
+  decision               String
+  confidenceScore        Float
+  createdAt              DateTime @default(now())
+
+  @@index([oddId])
+}
